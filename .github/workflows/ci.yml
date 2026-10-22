@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        run: swift test
+
+      - name: Build app bundle
+        run: ./scripts/build.sh
+
+      - name: Fail if a secret got committed
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$|\.db$|\.pem$|credentials'; then
+            echo "::error::A secret or local database file is tracked in git"
+            exit 1
+          fi
+          echo "no secrets tracked"
