@@ -1,8 +1,8 @@
 # snag
 
 ## What this is
-Snag is a native macOS drag-and-drop shelf, a personal clone of Yoink. Start a drag near the
-left screen edge and a translucent shelf slides in; drop files, text, links or images on it, go
+Snag is a native macOS drag-and-drop shelf, a personal clone of Yoink. Start dragging anything
+and a translucent shelf slides in on the left edge; drop files, text, links or images on it, go
 find the destination, then drag them back out. It is a menu-bar-only app (no Dock icon), for
 Melvern's own Mac.
 
@@ -18,7 +18,7 @@ Melvern's own Mac.
 
 ## Commands
 ```bash
-swift test                       # ShelfKit unit tests (28)
+swift test                       # ShelfKit unit tests (29)
 swift build                      # debug build of everything
 ./scripts/build.sh               # release build -> build/Snag.app (+ icon, ad-hoc sign)
 ./scripts/build.sh --install     # also copy to /Applications and relaunch
@@ -33,7 +33,7 @@ Product scope, non-goals, and open questions live in `docs/prd.md`.
 
 | # | Scope | Status | Model / effort |
 |---|---|---|---|
-| M1 | Shelf slice: drag-in near the left edge -> shelf; files/text/links/images/promises; drag-out; stacks; persistence; menu bar; hotkeys; Quick Look; settings | done | opus / high |
+| M1 | Shelf slice: any drag -> shelf on the left edge; files/text/links/images/promises; drag-out; stacks; persistence; menu bar; hotkeys; Quick Look; settings | done | opus / high |
 | M2 | Daily-driver polish: multi-select drag-out, reorder, per-item rename, clipboard history toggle | todo | opus / high |
 | M3 | Distribution: Developer ID signing + notarization, Sparkle updates (needs paid dev account) | todo | opus / high |
 
@@ -44,8 +44,8 @@ adversarial or security work; drop to a cheap model + medium for UI boilerplate.
 
 ## Behavior contract (what Melvern asked for, do not regress)
 - Docks to the **left** edge by default.
-- **Empty shelf = hidden.** It appears only when a drag comes within 60pt of the left edge,
-  and hides after the drag ends if nothing was dropped.
+- **Empty shelf = hidden.** It slides in as soon as ANY drag starts (like Yoink), and hides
+  after the drag ends if nothing was dropped. ("Near edge" / "manual" remain as settings.)
 - **Shelf with items = always visible.** Room for at least 5 rows; it grows, then scrolls.
 - No notifications, no big buttons. The header shows the file count and a small trash icon.
 

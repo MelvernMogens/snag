@@ -19,7 +19,7 @@ public enum ShowMode: String, Codable, CaseIterable, Sendable {
 /// throwaway suite.
 public struct Settings: Codable, Equatable, Sendable {
     public var edge: ShelfEdge = .left
-    public var showMode: ShowMode = .nearEdge
+    public var showMode: ShowMode = .onAnyDrag
     /// Drag an item out of the shelf -> it is removed (Yoink's default).
     public var removeAfterDragOut: Bool = true
     /// Hide the shelf again when it becomes empty.
@@ -46,11 +46,21 @@ public struct Settings: Codable, Equatable, Sendable {
         edgeDistance = (try? c.decode(Double.self, forKey: .edgeDistance)) ?? d.edgeDistance
     }
 
-    private static let key = "snag.settings.v2"
+    private static let key = "snag.settings.v3"
+    /// v2 defaulted to "near edge"; carried over on upgrade except for the show mode.
+    private static let legacyKey = "snag.settings.v2"
 
     public static func load(from defaults: UserDefaults = .standard) -> Settings {
-        guard let data = defaults.data(forKey: key),
-              var s = try? JSONDecoder().decode(Settings.self, from: data) else { return Settings() }
+        var s: Settings
+        if let data = defaults.data(forKey: key), let decoded = try? JSONDecoder().decode(Settings.self, from: data) {
+            s = decoded
+        } else if let data = defaults.data(forKey: legacyKey),
+                  let old = try? JSONDecoder().decode(Settings.self, from: data) {
+            s = old
+            s.showMode = Settings().showMode
+        } else {
+            return Settings()
+        }
         s.edgeDistance = min(max(s.edgeDistance.isFinite ? s.edgeDistance : 60, 4), 200)
         return s
     }

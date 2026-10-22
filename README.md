@@ -11,13 +11,13 @@ take your time, then pick it up again.
 ## How it works
 
 ```
-  any app: start dragging ──► reach the left edge ──► shelf slides in ──► drop
+  any app: start dragging ──► shelf slides in on the left ──► drop on it
                                                                           │
      Finder / Mail / Slack ◄── drag it back out ◄── shelf stays visible ◄─┘
                                 (item leaves the shelf)
 ```
 
-- **Empty shelf:** hidden. It only appears when a drag reaches the left edge.
+- **Empty shelf:** hidden. It slides in the moment you start dragging anything.
 - **Shelf with items:** stays visible on the left edge until you empty it.
 - **Files** are kept by reference (nothing is copied), and moving or renaming them is tracked via bookmarks.
 - **Several files dropped at once** become a stack you can drag out together or split.
@@ -54,7 +54,7 @@ the UI lives in `Snag`.
 ## Getting started
 
 ```bash
-swift test                     # 28 unit tests
+swift test                     # 29 unit tests
 ./scripts/build.sh --install   # build, copy to /Applications, launch
 ```
 

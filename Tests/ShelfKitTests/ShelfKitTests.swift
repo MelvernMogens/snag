@@ -273,10 +273,10 @@ final class ShelfKitTests: XCTestCase {
 
     // MARK: Settings
 
-    func testDefaultsDockLeftAndOnlyShowNearEdge() {
+    func testDefaultsDockLeftAndShowOnAnyDrag() {
         let s = Settings()
         XCTAssertEqual(s.edge, .left)
-        XCTAssertEqual(s.showMode, .nearEdge)
+        XCTAssertEqual(s.showMode, .onAnyDrag)
         XCTAssertTrue(s.stayVisibleWithItems)
         XCTAssertTrue(s.revealOnEdgeHover)
     }
@@ -286,8 +286,19 @@ final class ShelfKitTests: XCTestCase {
         let s = try JSONDecoder().decode(Settings.self, from: partial)
         XCTAssertEqual(s.edge, .right)
         XCTAssertFalse(s.removeAfterDragOut)
-        XCTAssertEqual(s.showMode, .nearEdge)
+        XCTAssertEqual(s.showMode, .onAnyDrag)
         XCTAssertTrue(s.revealOnEdgeHover)
+    }
+
+    func testV2SettingsMigrateToShowOnAnyDrag() throws {
+        let suite = "snag-test-\(UUID().uuidString)"
+        let d = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { d.removePersistentDomain(forName: suite) }
+        d.set(Data(#"{"edge":"right","showMode":"nearEdge","launchAtLogin":true}"#.utf8), forKey: "snag.settings.v2")
+        let s = Settings.load(from: d)
+        XCTAssertEqual(s.showMode, .onAnyDrag)
+        XCTAssertEqual(s.edge, .right)
+        XCTAssertTrue(s.launchAtLogin)
     }
 
     func testSettingsRoundTripAndClamp() throws {

@@ -8,15 +8,15 @@ Spaces or full-screen windows. One slip and the drag is lost. Yoink fixes this f
 wants his own version that behaves exactly the way he likes.
 
 ## 2. What we are building
-A menu-bar macOS app with a translucent shelf docked to the left screen edge. A drag that
-reaches the edge reveals the shelf. Drop anything on it (files, text, links, images, file
+A menu-bar macOS app with a translucent shelf docked to the left screen edge. Any drag
+reveals the shelf (like Yoink). Drop anything on it (files, text, links, images, file
 promises), then drag it back out wherever it belongs.
 
 ## 3. Who it is for
 Melvern, on his own Mac. It is a daily-driver utility, not a product for sale (yet).
 
 ## 4. What "done" means for the MVP
-- Drag a file from Finder to the left edge → shelf appears → drop → it stays on the shelf, file untouched.
+- Start dragging a file anywhere → shelf slides in on the left → drop → it stays on the shelf, file untouched.
 - Drag it from the shelf into another folder or app → it arrives and leaves the shelf.
 - Empty shelf is invisible; a shelf with items stays visible; it survives a relaunch.
 - Text, links and browser images work as well as files.
