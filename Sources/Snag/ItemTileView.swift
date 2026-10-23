@@ -188,25 +188,22 @@ final class ItemTileView: NSView, NSDraggingSource {
 
     // MARK: Drag out
 
-    /// Pasteboard writers for this item. Every entry carries its file URL; text and links also
-    /// carry their plain content so they drop as text into editors and as links into browsers.
+    /// Pasteboard writers for this item: one per file, each backed by a real `NSURL` so AppKit
+    /// attaches the sandbox extension that sandboxed destinations (WhatsApp, Mail, Messages,
+    /// Slack from the App Store) need to read the file. A raw `public.file-url` string has no
+    /// extension and those apps silently reject the drop. Text and links add their content.
     func pasteboardWriters() -> [NSPasteboardWriting] {
         item.entries.map { entry in
-            let pbi = NSPasteboardItem()
-            pbi.setString(entry.url.absoluteString, forType: .fileURL)
+            var extras: [NSPasteboard.PasteboardType: String] = [:]
             switch item.kind {
             case .text:
-                if let t = item.text { pbi.setString(t, forType: .string) }
+                if let t = item.text { extras[.string] = t }
             case .link:
-                if let t = item.text {
-                    pbi.setString(t, forType: .URL)
-                    pbi.setString(t, forType: .string)
-                    pbi.setString(item.title, forType: Ingest.urlName)
-                }
+                if let t = item.text { extras[.string] = t; extras[Ingest.urlName] = item.title }
             case .file, .image:
-                pbi.setString(entry.url.path, forType: .string)
+                break
             }
-            return pbi
+            return FileDragWriter(url: entry.url, extras: extras)
         }
     }
 
@@ -237,4 +234,30 @@ final class ItemTileView: NSView, NSDraggingSource {
     }
 
     func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { false }
+}
+
+/// Writes a file URL exactly the way `NSURL` does (including its sandbox extension and the
+/// file's content type), plus optional extra flavours such as plain text.
+final class FileDragWriter: NSObject, NSPasteboardWriting {
+    private let url: NSURL
+    private let extras: [NSPasteboard.PasteboardType: String]
+
+    init(url: URL, extras: [NSPasteboard.PasteboardType: String]) {
+        self.url = url as NSURL
+        self.extras = extras
+    }
+
+    func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        let own = url.writableTypes(for: pasteboard)
+        return own + extras.keys.filter { !own.contains($0) }
+    }
+
+    func writingOptions(forType type: NSPasteboard.PasteboardType, pasteboard: NSPasteboard) -> NSPasteboard.WritingOptions {
+        extras[type] != nil ? [] : url.writingOptions(forType: type, pasteboard: pasteboard)
+    }
+
+    func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        if let s = extras[type] { return s }
+        return url.pasteboardPropertyList(forType: type)
+    }
 }
