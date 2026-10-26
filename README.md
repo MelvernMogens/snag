@@ -18,7 +18,7 @@ take your time, then pick it up again.
 ```
 
 - **Empty shelf:** hidden. It slides in the moment you start dragging anything.
-- **Shelf with items:** stays visible on the left edge until you empty it.
+- **Shelf with items:** stays visible on the left edge until you empty it, on every desktop, including full-screen apps.
 - **Files** are kept by reference (nothing is copied), and moving or renaming them is tracked via bookmarks.
 - **Several files dropped at once** become a stack you can drag out together or split.
 - **Text, links and images** dragged from apps or browsers become real `.txt`, `.webloc` and `.png` files you can drop anywhere.
@@ -30,7 +30,8 @@ take your time, then pick it up again.
 |---|---|
 | `⌥⌘Y` | show / hide the shelf |
 | `⌃⌥⌘V` | put the clipboard on the shelf |
-| `Space` | Quick Look the selected item |
+| ⌘-click / ⇧-click / `⌘A` | select several items, then drag them out together |
+| `Space` | Quick Look the selection |
 | `⌫` | remove selected item |
 | `⌘V` / `⌘C` | paste into / copy from the shelf |
 | double-click | open |
@@ -54,7 +55,7 @@ the UI lives in `Snag`.
 ## Getting started
 
 ```bash
-swift test                     # 29 unit tests
+swift test                     # 35 unit tests
 ./scripts/build.sh --install   # build, copy to /Applications, launch
 ```
 

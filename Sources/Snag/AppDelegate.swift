@@ -52,6 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ShelfViewDelegate {
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(revalidate),
                                                           name: NSWorkspace.didActivateApplicationNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(spaceChanged),
+                                                          name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
 
         if !store.isEmpty && settings.stayVisibleWithItems { show(animated: false) }
         if ProcessInfo.processInfo.environment["SNAG_SHOW_ON_LAUNCH"] == "1" { pinned = true; show(animated: false) }
@@ -201,6 +203,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ShelfViewDelegate {
 
     @objc private func revalidate() {
         if store.revalidate() { NSLog("Snag: revalidate changed items -> %ld", store.items.count) }
+    }
+
+    /// Switching desktops (or into a full-screen app): bring the visible shelf along.
+    @objc private func spaceChanged() {
+        guard shown else { return }
+        panel.orderFrontRegardless()
+        // Full-screen Spaces animate in; re-assert once the transition has settled.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self, self.shown else { return }
+            self.panel.orderFrontRegardless()
+            self.reposition(animated: false)
+        }
     }
 
     @objc private func screensChanged() {

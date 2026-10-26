@@ -18,7 +18,7 @@ Melvern's own Mac.
 
 ## Commands
 ```bash
-swift test                       # ShelfKit unit tests (29)
+swift test                       # ShelfKit unit tests (35)
 swift build                      # debug build of everything
 ./scripts/build.sh               # release build -> build/Snag.app (+ icon, ad-hoc sign)
 ./scripts/build.sh --install     # also copy to /Applications and relaunch
@@ -46,7 +46,8 @@ adversarial or security work; drop to a cheap model + medium for UI boilerplate.
 - Docks to the **left** edge by default.
 - **Empty shelf = hidden.** It slides in as soon as ANY drag starts (like Yoink), and hides
   after the drag ends if nothing was dropped. ("Near edge" / "manual" remain as settings.)
-- **Shelf with items = always visible.** Room for at least 5 rows; it grows, then scrolls.
+- **Shelf with items = always visible**, on every Space including full-screen apps (re-ordered front on `activeSpaceDidChange`). Room for at least 5 rows; it grows, then scrolls.
+- Multi-select: ⌘-click toggle, ⇧-click range, ⌘A; dragging a selected tile drags the whole selection (logic in `ShelfKit/Selection.swift`).
 - No notifications, no big buttons. The header shows the file count and a small trash icon.
 
 ## Gotchas

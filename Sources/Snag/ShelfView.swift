@@ -10,7 +10,10 @@ final class ShelfPanel: NSPanel {
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
         level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        // canJoinAllSpaces + fullScreenAuxiliary = visible on every desktop, including full-screen apps
+        // (which are their own Space). AppDelegate re-orders it front on every Space switch, because
+        // macOS does not always carry an already-visible panel into a full-screen Space by itself.
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         isFloatingPanel = true
         hidesOnDeactivate = false
         isOpaque = false
@@ -45,7 +48,10 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
     private let stack = NSStackView()
     private let emptyLabel = NSTextField(labelWithString: "Drop here")
     private var tiles: [UUID: ItemTileView] = [:]
-    private var selectedID: UUID?
+    private var selection = Selection()
+    /// Items travelling in the current drag-out, removed from the shelf when it lands.
+    private var draggedIDs: [UUID] = []
+    private var orderIDs: [UUID] { store.items.map(\.id) }
     private var dropHover = false { didSet { updateBorder(); delegate?.shelfDropTargetChanged(dropHover) } }
     private(set) var dragOutInProgress = false
 
@@ -166,9 +172,9 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
             }
             stack.addArrangedSubview(tile)
             tile.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-            tile.isSelected = item.id == selectedID
         }
-        if let s = selectedID, !ids.contains(s) { selectedID = nil }
+        selection.prune(to: items.map(\.id))
+        refreshSelectionViews()
         let files = items.reduce(0) { $0 + $1.entries.count }
         header.stringValue = items.isEmpty ? "SNAG" : "\(files) FILE\(files == 1 ? "" : "S")"
         clearButton.isHidden = items.isEmpty
@@ -226,7 +232,8 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
         case (36, false): openSelected()                            // return
         case (125, false): moveSelection(+1)                        // down
         case (126, false): moveSelection(-1)                        // up
-        case (53, false): window?.resignKey(); selectedID = nil; reload()  // esc
+        case (0, true): selection.selectAll(orderIDs); refreshSelectionViews()   // ⌘A
+        case (53, false): window?.resignKey(); selection.set(nil); refreshSelectionViews()  // esc
         default: super.keyDown(with: event)
         }
     }
@@ -238,42 +245,51 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
     }
 
     @objc func copy(_ sender: Any?) {
-        guard let id = selectedID, let tile = tiles[id] else { return }
+        let writers = selection.ordered(in: orderIDs).compactMap { tiles[$0] }.flatMap { $0.pasteboardWriters() }
+        guard !writers.isEmpty else { return }
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.writeObjects(tile.pasteboardWriters())
+        pb.writeObjects(writers)
     }
 
     @objc func delete(_ sender: Any?) { removeSelected() }
 
+    @objc override func selectAll(_ sender: Any?) {
+        selection.selectAll(orderIDs)
+        refreshSelectionViews()
+    }
+
     private func moveSelection(_ delta: Int) {
         let items = store.items
         guard !items.isEmpty else { return }
-        let cur = items.firstIndex { $0.id == selectedID } ?? (delta > 0 ? -1 : items.count)
+        let cur = items.firstIndex { $0.id == selection.anchor } ?? (delta > 0 ? -1 : items.count)
         let next = min(max(cur + delta, 0), items.count - 1)
         select(items[next].id)
         if let t = tiles[items[next].id] { t.scrollToVisible(t.bounds) }
     }
 
     private func select(_ id: UUID?) {
-        selectedID = id
-        for (tid, tile) in tiles { tile.isSelected = tid == id }
+        selection.set(id)
+        refreshSelectionViews()
+    }
+
+    private func refreshSelectionViews() {
+        for (tid, tile) in tiles { tile.isSelected = selection.contains(tid) }
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
             QLPreviewPanel.shared().reloadData()
         }
     }
 
     private func removeSelected() {
-        guard let id = selectedID else { return }
-        let items = store.items
-        let idx = items.firstIndex { $0.id == id }
-        store.remove(id: id)
+        let ids = selection.ordered(in: orderIDs)
+        guard let first = ids.first else { return }
+        let idx = orderIDs.firstIndex(of: first)
+        store.remove(ids: ids)
         if let idx, !store.items.isEmpty { select(store.items[min(idx, store.items.count - 1)].id) }
     }
 
     private func openSelected() {
-        guard let id = selectedID, let item = store.item(id: id) else { return }
-        open(item)
+        selection.ordered(in: orderIDs).compactMap { store.item(id: $0) }.forEach(open)
     }
 
     private func open(_ item: ShelfItem) {
@@ -292,6 +308,26 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
         select(tile.item.id)
     }
 
+    func tileClicked(_ tile: ItemTileView, modifier: Selection.Modifier) {
+        window?.makeKey()
+        window?.makeFirstResponder(self)
+        selection.click(tile.item.id, modifier: modifier, order: orderIDs)
+        refreshSelectionViews()
+    }
+
+    func tileClickEnded(_ tile: ItemTileView) {
+        selection.commitPlainClick()
+        refreshSelectionViews()
+    }
+
+    func tileDraggingItems(_ tile: ItemTileView) -> [NSDraggingItem] {
+        selection.cancelPendingCollapse()
+        // Dragging an unselected tile drags just that tile (Finder behaviour).
+        let ids = selection.contains(tile.item.id) ? selection.ordered(in: orderIDs) : [tile.item.id]
+        draggedIDs = ids
+        return ids.compactMap { tiles[$0] }.flatMap { $0.draggingItems(relativeTo: tile) }
+    }
+
     func tileOpen(_ tile: ItemTileView) { open(tile.item) }
 
     func tileRemove(_ tile: ItemTileView) { NSLog("Snag: x remove %@", tile.item.title); store.remove(id: tile.item.id) }
@@ -307,6 +343,19 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
         func add(_ title: String, _ action: @escaping () -> Void) {
             let mi = ClosureMenuItem(title: title, action: action)
             m.addItem(mi)
+        }
+        let group = selection.contains(item.id) && selection.count > 1 ? selection.ordered(in: orderIDs) : [item.id]
+        if group.count > 1 {
+            add("Open \(group.count) Items") { [weak self] in self?.openSelected() }
+            add("Copy \(group.count) Items") { [weak self] in self?.copy(nil) }
+            add("Show in Finder") { [weak self] in
+                guard let self else { return }
+                let urls = group.compactMap { self.store.item(id: $0) }.filter { $0.kind == .file }.flatMap(\.urls)
+                if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
+            }
+            m.addItem(.separator())
+            add("Remove \(group.count) Items from Shelf") { [weak self] in self?.store.remove(ids: group) }
+            return m
         }
         add("Open") { [weak self] in self?.open(item) }
         add("Quick Look") { [weak self] in self?.tileQuickLook(tile) }
@@ -333,16 +382,17 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
     func tileDragEnded(_ tile: ItemTileView, operation: NSDragOperation, insideShelf: Bool) {
         dragOutInProgress = false
         NSLog("Snag: drag-out ended op=%lu inside=%d", operation.rawValue, insideShelf ? 1 : 0)
-        guard !insideShelf, !operation.isEmpty, settingsProvider().removeAfterDragOut else { return }
+        guard !insideShelf, !operation.isEmpty, settingsProvider().removeAfterDragOut else { draggedIDs = []; return }
         // Keep owned files around for a while: the destination may still be reading them.
-        store.remove(id: tile.item.id, deferDeletion: true)
+        let ids = draggedIDs.isEmpty ? [tile.item.id] : draggedIDs
+        draggedIDs = []
+        store.remove(ids: ids, deferDeletion: true)
     }
 
     // MARK: Quick Look
 
     private var previewURLs: [URL] {
-        guard let id = selectedID, let item = store.item(id: id) else { return [] }
-        return item.urls
+        selection.ordered(in: orderIDs).compactMap { store.item(id: $0) }.flatMap(\.urls)
     }
 
     private func toggleQuickLook() {

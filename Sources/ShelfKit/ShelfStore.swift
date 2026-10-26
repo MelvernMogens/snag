@@ -73,6 +73,16 @@ public final class ShelfStore {
         commit()
     }
 
+    /// Removes several items with a single save/notify.
+    public func remove(ids: [UUID], deferDeletion: Bool = false) {
+        let set = Set(ids)
+        let removed = items.filter { set.contains($0.id) }
+        guard !removed.isEmpty else { return }
+        items.removeAll { set.contains($0.id) }
+        removed.forEach { discardOwnedFiles(of: $0, deferred: deferDeletion) }
+        commit()
+    }
+
     public func clear() {
         let all = items
         items.removeAll()

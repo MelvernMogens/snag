@@ -316,4 +316,63 @@ final class ShelfKitTests: XCTestCase {
         XCTAssertEqual(back.showMode, .nearEdge)
         XCTAssertEqual(back.edgeDistance, 200)
     }
+
+    // MARK: Multi-select
+
+    private let o = (0..<5).map { _ in UUID() }
+
+    func testPlainClickSelectsOne() {
+        var sel = Selection()
+        sel.click(o[1], modifier: .none, order: o)
+        sel.click(o[3], modifier: .none, order: o)
+        XCTAssertEqual(sel.ids, [o[3]])
+    }
+
+    func testCommandClickToggles() {
+        var sel = Selection()
+        sel.click(o[0], modifier: .none, order: o)
+        sel.click(o[2], modifier: .toggle, order: o)
+        sel.click(o[4], modifier: .toggle, order: o)
+        XCTAssertEqual(sel.ordered(in: o), [o[0], o[2], o[4]])
+        sel.click(o[2], modifier: .toggle, order: o)
+        XCTAssertEqual(sel.ordered(in: o), [o[0], o[4]])
+    }
+
+    func testShiftClickSelectsRangeFromAnchor() {
+        var sel = Selection()
+        sel.click(o[3], modifier: .none, order: o)
+        sel.click(o[1], modifier: .extend, order: o)
+        XCTAssertEqual(sel.ordered(in: o), [o[1], o[2], o[3]])
+    }
+
+    func testPlainClickOnGroupKeepsItForDragThenCollapsesOnMouseUp() {
+        var sel = Selection()
+        sel.selectAll(o)
+        sel.click(o[2], modifier: .none, order: o)
+        XCTAssertEqual(sel.count, 5, "group must survive mouse-down so it can be dragged together")
+        var dragged = sel
+        dragged.cancelPendingCollapse()
+        dragged.commitPlainClick()
+        XCTAssertEqual(dragged.count, 5)
+        sel.commitPlainClick()
+        XCTAssertEqual(sel.ids, [o[2]])
+    }
+
+    func testPruneDropsRemovedIds() {
+        var sel = Selection()
+        sel.selectAll(o)
+        sel.prune(to: Array(o.prefix(2)))
+        XCTAssertEqual(sel.ordered(in: o), [o[0], o[1]])
+    }
+
+    func testRemoveManyAtOnce() throws {
+        let a = try XCTUnwrap(factory.text("a")), b = try XCTUnwrap(factory.text("b")), c = try XCTUnwrap(factory.text("c"))
+        store.add(a); store.add(b); store.add(c)
+        var changes = 0
+        store.onChange = { changes += 1 }
+        store.remove(ids: [a.id, c.id])
+        XCTAssertEqual(store.items.map(\.id), [b.id])
+        XCTAssertEqual(changes, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: a.entries[0].path))
+    }
 }

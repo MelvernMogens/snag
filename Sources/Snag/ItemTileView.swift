@@ -3,6 +3,10 @@ import ShelfKit
 
 protocol ItemTileDelegate: AnyObject {
     func tileSelected(_ tile: ItemTileView)
+    func tileClicked(_ tile: ItemTileView, modifier: Selection.Modifier)
+    func tileClickEnded(_ tile: ItemTileView)
+    /// Everything that should travel with a drag started on `tile` (the whole selection).
+    func tileDraggingItems(_ tile: ItemTileView) -> [NSDraggingItem]
     func tileOpen(_ tile: ItemTileView)
     func tileRemove(_ tile: ItemTileView)
     func tileQuickLook(_ tile: ItemTileView)
@@ -167,8 +171,10 @@ final class ItemTileView: NSView, NSDraggingSource {
             delegate?.tileRemove(self); return
         }
         mouseDownPoint = p
-        delegate?.tileSelected(self)
-        if event.clickCount == 2 { delegate?.tileOpen(self) }
+        let f = event.modifierFlags
+        let modifier: Selection.Modifier = f.contains(.command) ? .toggle : (f.contains(.shift) ? .extend : .none)
+        delegate?.tileClicked(self, modifier: modifier)
+        if event.clickCount == 2, modifier == .none { delegate?.tileOpen(self) }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -179,10 +185,13 @@ final class ItemTileView: NSView, NSDraggingSource {
         beginDragOut(event)
     }
 
-    override func mouseUp(with event: NSEvent) { mouseDownPoint = nil }
+    override func mouseUp(with event: NSEvent) {
+        if mouseDownPoint != nil { delegate?.tileClickEnded(self) }
+        mouseDownPoint = nil
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        delegate?.tileSelected(self)
+        if !isSelected { delegate?.tileSelected(self) }
         return delegate?.tileMenu(self)
     }
 
@@ -207,15 +216,22 @@ final class ItemTileView: NSView, NSDraggingSource {
         }
     }
 
-    private func beginDragOut(_ event: NSEvent) {
+    /// Dragging items for this tile's files, framed in `view`'s coordinates (the view that
+    /// starts the session), so a multi-tile drag lifts each thumbnail from where it sits.
+    func draggingItems(relativeTo view: NSView) -> [NSDraggingItem] {
         let side = Self.thumbSide
-        let start = NSRect(x: (bounds.width - side) / 2, y: 6, width: side, height: side)
-        let dragItems: [NSDraggingItem] = pasteboardWriters().enumerated().map { i, writer in
+        let local = NSRect(x: (bounds.width - side) / 2, y: 5, width: side, height: side)
+        let start = view.convert(local, from: self)
+        return pasteboardWriters().enumerated().map { i, writer in
             let di = NSDraggingItem(pasteboardWriter: writer)
             let img = i < thumbs.count ? thumbs[i] : (thumbs.first ?? NSImage())
             di.setDraggingFrame(start.offsetBy(dx: CGFloat(i) * 4, dy: CGFloat(i) * 4), contents: img)
             return di
         }
+    }
+
+    private func beginDragOut(_ event: NSEvent) {
+        let dragItems = delegate?.tileDraggingItems(self) ?? draggingItems(relativeTo: self)
         guard !dragItems.isEmpty else { return }
         delegate?.tileDragBegan(self)
         let session = beginDraggingSession(with: dragItems, event: event, source: self)
