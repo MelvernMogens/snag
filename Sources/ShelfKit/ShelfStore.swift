@@ -73,6 +73,53 @@ public final class ShelfStore {
         commit()
     }
 
+    public enum RenameError: Error, Equatable {
+        case notFound, isStack, invalidName, alreadyExists, failed(String)
+    }
+
+    /// A name macOS will accept for a file, without surprises: no path separators, not hidden,
+    /// not empty, at most 255 bytes.
+    public static func isValidFileName(_ name: String) -> Bool {
+        guard !name.isEmpty, name != ".", name != "..", !name.hasPrefix("."),
+              name.utf8.count <= 255 else { return false }
+        return !name.unicodeScalars.contains { $0 == "/" || $0 == ":" || $0 == "\0" || CharacterSet.newlines.contains($0) }
+    }
+
+    /// Renames the item's file on disk (in place, same folder) and updates the shelf.
+    /// Works for the user's own files and for Snag-owned snippets/links/images alike.
+    @discardableResult
+    public func rename(id: UUID, to rawName: String) throws -> ShelfItem {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { throw RenameError.notFound }
+        var item = items[i]
+        guard item.entries.count == 1 else { throw RenameError.isStack }
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Self.isValidFileName(name) else { throw RenameError.invalidName }
+        let old = item.entries[0].url
+        guard name != old.lastPathComponent else { return item }
+        let new = old.deletingLastPathComponent().appendingPathComponent(name)
+        let caseOnly = name.lowercased() == old.lastPathComponent.lowercased()
+        if !caseOnly && fm.fileExists(atPath: new.path) { throw RenameError.alreadyExists }
+        do {
+            if caseOnly {
+                // Case-insensitive volumes see "a.txt" and "A.txt" as the same file: hop via a temp name.
+                let tmp = old.deletingLastPathComponent().appendingPathComponent(".snag-rename-\(UUID().uuidString)")
+                try fm.moveItem(at: old, to: tmp)
+                try fm.moveItem(at: tmp, to: new)
+            } else {
+                try fm.moveItem(at: old, to: new)
+            }
+        } catch {
+            throw RenameError.failed(error.localizedDescription)
+        }
+        item.entries[0].path = new.path
+        if !item.entries[0].owned { item.entries[0].bookmark = Self.bookmark(for: new) ?? item.entries[0].bookmark }
+        let base = (name as NSString).deletingPathExtension
+        item.title = item.kind == .file || base.isEmpty ? name : base
+        items[i] = item
+        commit()
+        return item
+    }
+
     /// Removes several items with a single save/notify.
     public func remove(ids: [UUID], deferDeletion: Bool = false) {
         let set = Set(ids)

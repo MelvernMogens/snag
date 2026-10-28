@@ -31,6 +31,8 @@ take your time, then pick it up again.
 | `⌥⌘Y` | show / hide the shelf |
 | `⌃⌥⌘V` | put the clipboard on the shelf |
 | ⌘-click / ⇧-click / `⌘A` | select several items, then drag them out together |
+| `Return` or right-click → Rename… | rename the file (really renames it on disk; refuses if the name is taken) |
+| `⌘O` / `⌘↓` | open |
 | `Space` | Quick Look the selection |
 | `⌫` | remove selected item |
 | `⌘V` / `⌘C` | paste into / copy from the shelf |
@@ -55,7 +57,7 @@ the UI lives in `Snag`.
 ## Getting started
 
 ```bash
-swift test                     # 35 unit tests
+swift test                     # 41 unit tests
 ./scripts/build.sh --install   # build, copy to /Applications, launch
 ```
 

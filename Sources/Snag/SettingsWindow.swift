@@ -37,7 +37,7 @@ final class SettingsWindowController: NSWindowController {
             c.action = #selector(changed)
         }
         let hint = NSTextField(wrappingLabelWithString:
-            "Shortcuts: ⌥⌘Y show/hide the shelf · ⌃⌥⌘V add clipboard. In the shelf: Space = Quick Look, ⌫ = remove, ⌘V = paste.")
+            "Shortcuts: ⌥⌘Y show/hide the shelf · ⌃⌥⌘V add clipboard. In the shelf: Return = rename, Space = Quick Look, ⌫ = remove, ⌘V = paste.")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
 

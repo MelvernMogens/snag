@@ -57,6 +57,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ShelfViewDelegate {
 
         if !store.isEmpty && settings.stayVisibleWithItems { show(animated: false) }
         if ProcessInfo.processInfo.environment["SNAG_SHOW_ON_LAUNCH"] == "1" { pinned = true; show(animated: false) }
+        if let base = ProcessInfo.processInfo.environment["SNAG_SELFTEST_RENAME"] {
+            pinned = true
+            show(animated: false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.shelfView.selfTestRename(base: base) { result in
+                    print("SELFTEST " + result); fflush(stdout)
+                    NSApp.terminate(nil)
+                }
+            }
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

@@ -18,12 +18,13 @@ Melvern's own Mac.
 
 ## Commands
 ```bash
-swift test                       # ShelfKit unit tests (35)
+swift test                       # ShelfKit unit tests (41)
 swift build                      # debug build of everything
 ./scripts/build.sh               # release build -> build/Snag.app (+ icon, ad-hoc sign)
 ./scripts/build.sh --install     # also copy to /Applications and relaunch
 SNAG_DATA_DIR=/tmp/x build/Snag.app/Contents/MacOS/Snag   # run against a throwaway shelf
 SNAG_SHOW_ON_LAUNCH=1 ...        # force the shelf open at launch (testing)
+SNAG_DATA_DIR=/tmp/x SNAG_SELFTEST_RENAME="New" .../Snag  # opens inline rename on the top item, types, presses Return, prints SELFTEST + quits
 ```
 Real data: `~/Library/Application Support/Snag/` (`shelf.json` + `Items/` for owned files).
 Settings: `defaults read com.melvern.snag`.
@@ -48,6 +49,7 @@ adversarial or security work; drop to a cheap model + medium for UI boilerplate.
   after the drag ends if nothing was dropped. ("Near edge" / "manual" remain as settings.)
 - **Shelf with items = always visible**, on every Space including full-screen apps (re-ordered front on `activeSpaceDidChange`). Room for at least 5 rows; it grows, then scrolls.
 - Multi-select: ⌘-click toggle, ⇧-click range, ⌘A; dragging a selected tile drags the whole selection (logic in `ShelfKit/Selection.swift`).
+- Rename (Return / right-click) renames the real file in place via `ShelfStore.rename`; never overwrites, rejects `/ :`, leading dots, >255 bytes. Stacks can't be renamed.
 - No notifications, no big buttons. The header shows the file count and a small trash icon.
 
 ## Gotchas

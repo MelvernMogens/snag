@@ -229,7 +229,8 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
         switch (event.keyCode, cmd) {
         case (49, false): toggleQuickLook()                         // space
         case (51, _), (117, _): removeSelected()                    // delete / fwd delete
-        case (36, false): openSelected()                            // return
+        case (36, false), (76, false): beginRenameSelected()        // return / enter = rename (Finder)
+        case (125, true), (31, true): openSelected()                // ⌘↓ / ⌘O = open
         case (125, false): moveSelection(+1)                        // down
         case (126, false): moveSelection(-1)                        // up
         case (0, true): selection.selectAll(orderIDs); refreshSelectionViews()   // ⌘A
@@ -330,6 +331,41 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
 
     func tileOpen(_ tile: ItemTileView) { open(tile.item) }
 
+    func beginRenameSelected() {
+        let ids = selection.ordered(in: orderIDs)
+        guard ids.count == 1, let tile = tiles[ids[0]], !tile.item.isStack else { NSSound.beep(); return }
+        tile.scrollToVisible(tile.bounds)
+        tile.beginRename()
+    }
+
+    func tileRename(_ tile: ItemTileView, to name: String) -> Bool {
+        do {
+            try store.rename(id: tile.item.id, to: name)
+            Thumbnails.shared.invalidate()
+            return true
+        } catch {
+            NSLog("Snag: rename to %@ refused: %@", name, String(describing: error))
+            return false
+        }
+    }
+
+    /// Self-test: rename the top item by typing `base` over the pre-selected base name.
+    func selfTestRename(base: String, done: @escaping (String) -> Void) {
+        guard let first = store.items.first, let tile = tiles[first.id] else { done("FAIL no item"); return }
+        select(first.id)
+        beginRenameSelected()
+        let opened = tile.isEditing
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            let r = tile.selfTestType(base)
+            let now = self?.store.item(id: first.id)?.entries.first?.name ?? "?"
+            done("opened=\(opened) preselected=\(r.selected.location),\(r.selected.length) closed=\(r.ok) name=\(now)")
+        }
+    }
+
+    func tileRenameFinished(_ tile: ItemTileView) {
+        window?.makeFirstResponder(self)
+    }
+
     func tileRemove(_ tile: ItemTileView) { NSLog("Snag: x remove %@", tile.item.title); store.remove(id: tile.item.id) }
 
     func tileQuickLook(_ tile: ItemTileView) {
@@ -368,6 +404,9 @@ final class ShelfView: NSView, ItemTileDelegate, QLPreviewPanelDataSource, QLPre
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(t, forType: .string)
             }
+        }
+        if !item.isStack {
+            add("Rename…") { [weak self] in self?.select(item.id); tile.beginRename() }
         }
         if item.isStack {
             add("Split Stack") { [weak self] in self?.store.split(id: item.id) }

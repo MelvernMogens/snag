@@ -375,4 +375,67 @@ final class ShelfKitTests: XCTestCase {
         XCTAssertEqual(changes, 1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: a.entries[0].path))
     }
+
+    // MARK: Rename
+
+    func testRenameMovesUserFileOnDiskAndUpdatesShelf() throws {
+        let f = try userFile("draft.pdf", "content")
+        let item = try XCTUnwrap(factory.files([f]))
+        store.add(item)
+        try store.rename(id: item.id, to: "Final Report.pdf")
+        let renamed = scratch.appendingPathComponent("Final Report.pdf")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.path))
+        XCTAssertEqual(try String(contentsOf: renamed, encoding: .utf8), "content")
+        XCTAssertEqual(store.items[0].entries[0].path, renamed.standardizedFileURL.path)
+        XCTAssertEqual(store.items[0].title, "Final Report.pdf")
+        let reopened = ShelfStore(root: store.root); reopened.load()
+        XCTAssertEqual(reopened.items[0].title, "Final Report.pdf")
+    }
+
+    func testRenameRefusesToOverwriteExistingFile() throws {
+        let a = try userFile("a.txt", "A"); _ = try userFile("b.txt", "B")
+        let item = try XCTUnwrap(factory.files([a]))
+        store.add(item)
+        XCTAssertThrowsError(try store.rename(id: item.id, to: "b.txt")) {
+            XCTAssertEqual($0 as? ShelfStore.RenameError, .alreadyExists)
+        }
+        XCTAssertEqual(try String(contentsOf: a, encoding: .utf8), "A")
+        XCTAssertEqual(try String(contentsOf: scratch.appendingPathComponent("b.txt"), encoding: .utf8), "B")
+    }
+
+    func testRenameRejectsBadNames() throws {
+        let item = try XCTUnwrap(factory.files([try userFile("a.txt")]))
+        store.add(item)
+        for bad in ["", "   ", "../x.txt", "a/b.txt", "a:b", ".hidden", String(repeating: "x", count: 300)] {
+            XCTAssertThrowsError(try store.rename(id: item.id, to: bad), bad)
+        }
+        XCTAssertEqual(store.items[0].title, "a.txt")
+    }
+
+    func testRenameCaseOnly() throws {
+        let item = try XCTUnwrap(factory.files([try userFile("photo.jpg")]))
+        store.add(item)
+        try store.rename(id: item.id, to: "Photo.JPG")
+        XCTAssertEqual(store.items[0].entries[0].name, "Photo.JPG")
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: scratch.path).contains("Photo.JPG"))
+    }
+
+    func testRenameStackIsRefused() throws {
+        let stack = try XCTUnwrap(factory.files([try userFile("1.txt"), try userFile("2.txt")]))
+        store.add(stack)
+        XCTAssertThrowsError(try store.rename(id: stack.id, to: "x")) {
+            XCTAssertEqual($0 as? ShelfStore.RenameError, .isStack)
+        }
+    }
+
+    func testRenamedSnippetIsStillOwnedAndCleanedUp() throws {
+        let snip = try XCTUnwrap(factory.text("hello world"))
+        store.add(snip)
+        let renamed = try store.rename(id: snip.id, to: "greeting.txt")
+        XCTAssertEqual(renamed.title, "greeting")
+        let path = renamed.entries[0].path
+        XCTAssertTrue(path.hasSuffix("/greeting.txt"))
+        store.remove(id: snip.id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
+    }
 }

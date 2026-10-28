@@ -12,13 +12,16 @@ protocol ItemTileDelegate: AnyObject {
     func tileQuickLook(_ tile: ItemTileView)
     func tileMenu(_ tile: ItemTileView) -> NSMenu
     func tileDragBegan(_ tile: ItemTileView)
+    /// Apply a rename; false = refused (name taken / invalid), keep editing.
+    func tileRename(_ tile: ItemTileView, to name: String) -> Bool
+    func tileRenameFinished(_ tile: ItemTileView)
     /// `operation` is what the destination did; `insideShelf` = dropped back onto the shelf.
     func tileDragEnded(_ tile: ItemTileView, operation: NSDragOperation, insideShelf: Bool)
 }
 
 /// One shelf item: thumbnail (fanned for stacks), two-line label, hover × to remove.
 /// Dragging it out hands real file URLs (plus text / URL flavours) to the destination.
-final class ItemTileView: NSView, NSDraggingSource {
+final class ItemTileView: NSView, NSDraggingSource, NSTextFieldDelegate {
     static let thumbSide: CGFloat = 60
 
     private(set) var item: ShelfItem
@@ -29,6 +32,9 @@ final class ItemTileView: NSView, NSDraggingSource {
     private var hovering = false { didSet { needsDisplay = true } }
     private var mouseDownPoint: NSPoint?
     private var tracking: NSTrackingArea?
+    private var editor: NSTextField?
+    private var finishingEdit = false
+    var isEditing: Bool { editor != nil }
 
     init(item: ShelfItem) {
         self.item = item
@@ -101,8 +107,8 @@ final class ItemTileView: NSView, NSDraggingSource {
             .paragraphStyle: para,
         ]
         let label = NSAttributedString(string: item.displayTitle, attributes: attrs)
-        label.draw(with: NSRect(x: 6, y: base.maxY + 3, width: bounds.width - 12, height: 28),
-                   options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        if editor == nil { label.draw(with: NSRect(x: 6, y: base.maxY + 3, width: bounds.width - 12, height: 28),
+                   options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine]) }
 
         if hovering {
             let c = closeRect
@@ -149,6 +155,106 @@ final class ItemTileView: NSView, NSDraggingSource {
         let s = min(r.width / size.width, r.height / size.height)
         let w = size.width * s, h = size.height * s
         return NSRect(x: r.midX - w / 2, y: r.midY - h / 2, width: w, height: h)
+    }
+
+    // MARK: Rename (inline, Finder-style)
+
+    func beginRename() {
+        guard editor == nil, item.entries.count == 1 else { return }
+        let name = item.entries[0].name
+        let f = NSTextField(string: name)
+        f.frame = NSRect(x: 3, y: 5 + Self.thumbSide + 2, width: bounds.width - 6, height: 20)
+        f.font = .systemFont(ofSize: 11, weight: .medium)
+        f.alignment = .center
+        f.isBezeled = false
+        f.isBordered = false
+        f.focusRingType = .none
+        f.drawsBackground = true
+        f.backgroundColor = NSColor(white: 0.12, alpha: 1)
+        f.textColor = .white
+        f.wantsLayer = true
+        f.layer?.cornerRadius = 4
+        f.layer?.borderWidth = 1.5
+        f.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        f.cell?.isScrollable = true
+        f.cell?.usesSingleLineMode = true
+        f.cell?.wraps = false
+        f.delegate = self
+        addSubview(f)
+        editor = f
+        needsDisplay = true
+        window?.makeKey()
+        window?.makeFirstResponder(f)
+        // Select the name without its extension, like Finder.
+        let ns = name as NSString
+        let ext = ns.pathExtension
+        let len = ext.isEmpty || selectsWholeName ? ns.length : ns.length - (ext as NSString).length - 1
+        f.currentEditor()?.selectedRange = NSRange(location: 0, length: max(0, len))
+    }
+
+    /// Plain folders select their whole name; files and packages (.app) keep the extension out.
+    private var selectsWholeName: Bool {
+        let v = try? item.entries[0].url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        return v?.isDirectory == true && v?.isPackage != true
+    }
+
+    /// Return = commit (stay open and flash red if refused). Click-away = commit or revert.
+    func commitRename(keepOpenOnFailure: Bool) {
+        guard let f = editor, !finishingEdit else { return }
+        let name = f.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty || name == item.entries.first?.name { endRename(); return }
+        finishingEdit = true
+        let ok = delegate?.tileRename(self, to: name) ?? false
+        finishingEdit = false
+        if ok { endRename(); return }
+        NSSound.beep()
+        if keepOpenOnFailure {
+            // Stay in the field (re-focusing it would end editing and re-commit): flag it red
+            // and re-select the base name so the next keystroke replaces it.
+            f.layer?.borderColor = NSColor.systemRed.cgColor
+            if let ed = f.currentEditor() {
+                let ns = f.stringValue as NSString
+                let ext = ns.pathExtension
+                ed.selectedRange = NSRange(location: 0, length: ext.isEmpty ? ns.length : max(0, ns.length - (ext as NSString).length - 1))
+            }
+        } else {
+            endRename()
+        }
+    }
+
+    func endRename() {
+        guard let f = editor, !finishingEdit else { return }
+        finishingEdit = true
+        editor = nil
+        f.delegate = nil
+        f.removeFromSuperview()
+        finishingEdit = false
+        needsDisplay = true
+        delegate?.tileRenameFinished(self)
+    }
+
+    /// Self-test only (SNAG_SELFTEST_RENAME): type into the open editor and press Return through
+    /// the same delegate path a real keypress takes. Returns the pre-selected range.
+    func selfTestType(_ text: String) -> (selected: NSRange, ok: Bool) {
+        guard let f = editor, let tv = f.currentEditor() as? NSTextView else { return (NSRange(), false) }
+        let sel = tv.selectedRange()
+        tv.insertText(text, replacementRange: sel)
+        _ = control(f, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        return (sel, !isEditing)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        if sel == #selector(NSResponder.insertNewline(_:)) { commitRename(keepOpenOnFailure: true); return true }
+        if sel == #selector(NSResponder.cancelOperation(_:)) { endRename(); return true }
+        return false
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        editor?.layer?.borderColor = NSColor.controlAccentColor.cgColor
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        if editor != nil && !finishingEdit { commitRename(keepOpenOnFailure: false) }
     }
 
     // MARK: Mouse
